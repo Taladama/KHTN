@@ -11,9 +11,19 @@ interface ResultsViewProps {
   onAskAI: (data: UserAnswer) => void;
   onShowHistory: () => void;
   studentName: string;
+  unansweredCount: number;
 }
 
-const ResultsView: React.FC<ResultsViewProps> = ({ score, totalQuestions, userAnswers, onRetry, onAskAI, onShowHistory, studentName }) => {
+const ResultsView: React.FC<ResultsViewProps> = ({
+  score,
+  totalQuestions,
+  userAnswers,
+  onRetry,
+  onAskAI,
+  onShowHistory,
+  studentName,
+  unansweredCount
+}) => {
   const [showExplanations, setShowExplanations] = useState(false);
 
   const { title, titleColor } = useMemo(() => {
@@ -36,6 +46,11 @@ const ResultsView: React.FC<ResultsViewProps> = ({ score, totalQuestions, userAn
       <p className="text-xl text-slate-700 dark:text-slate-300 mb-6">
         Bạn đã trả lời đúng {score} trên tổng số {totalQuestions} câu hỏi.
       </p>
+      {unansweredCount > 0 && (
+        <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+          Có {unansweredCount} câu hỏi chưa được trả lời và được tính là sai khi chấm điểm.
+        </p>
+      )}
       <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
         Kết quả đã được lưu vào lịch sử. Bạn có thể xem lại bất cứ lúc nào.
       </p>

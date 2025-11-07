@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AnswerKey, Question, QuizStatus, UserAnswer, QuizAttempt, RecordedAnswerKey } from './types';
 import {
   allQuestions,
@@ -100,6 +100,7 @@ const App: React.FC = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<UserAnswer[]>([]);
+  const [selectedAnswers, setSelectedAnswers] = useState<(AnswerKey | null)[]>([]);
   const [quizHistory, setQuizHistory] = useState<QuizAttempt[]>([]);
   const [studentName, setStudentName] = useState('');
   const [nameInput, setNameInput] = useState('');
@@ -113,6 +114,10 @@ const App: React.FC = () => {
   const [modalContent, setModalContent] = useState('');
   const [isModalLoading, setIsModalLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [submissionPrompt, setSubmissionPrompt] = useState<{
+    firstUnansweredIndex: number | null;
+    unansweredCount: number;
+  } | null>(null);
 
   const startQuiz = useCallback((name: string) => {
     const trimmedName = name.trim();
@@ -121,8 +126,11 @@ const App: React.FC = () => {
     setTimeRemaining(QUIZ_DURATION_SECONDS);
     setHasShownWarning(false);
     setIsWarningVisible(false);
+    setSubmissionPrompt(null);
     const shuffled = shuffleArray(allQuestions);
-    setQuestions(shuffled.slice(0, NUM_QUESTIONS_PER_QUIZ));
+    const quizQuestions = shuffled.slice(0, NUM_QUESTIONS_PER_QUIZ);
+    setQuestions(quizQuestions);
+    setSelectedAnswers(Array.from({ length: quizQuestions.length }, () => null));
     setCurrentQuestionIndex(0);
     setUserAnswers([]);
     setQuizStatus('active');
@@ -248,28 +256,40 @@ const App: React.FC = () => {
     []
   );
 
-  const finalizeQuiz = useCallback(
-    (completedAnswers: UserAnswer[]) => {
-      if (questions.length === 0) {
-        return;
-      }
+  const buildUserAnswers = useCallback((): UserAnswer[] => {
+    if (questions.length === 0) {
+      return [];
+    }
 
-      const attempt: QuizAttempt = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: new Date().toISOString(),
-        score: completedAnswers.filter(answer => answer.isCorrect).length,
-        totalQuestions: questions.length,
-        answers: completedAnswers,
-        studentName
-      };
+    return questions.map((question, index) => {
+      const selected = selectedAnswers[index] ?? null;
+      const recordedKey: RecordedAnswerKey = selected ?? 'unanswered';
+      return createUserAnswerRecord(question, index + 1, recordedKey);
+    });
+  }, [questions, selectedAnswers, createUserAnswerRecord]);
 
-      setUserAnswers(completedAnswers);
-      saveAttemptToHistory(attempt);
-      setQuizStatus('finished');
-      setIsWarningVisible(false);
-    },
-    [questions, saveAttemptToHistory, studentName]
-  );
+  const finalizeQuiz = useCallback(() => {
+    if (questions.length === 0) {
+      return;
+    }
+
+    const completedAnswers = buildUserAnswers();
+
+    const attempt: QuizAttempt = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+      score: completedAnswers.filter(answer => answer.isCorrect).length,
+      totalQuestions: questions.length,
+      answers: completedAnswers,
+      studentName
+    };
+
+    setSubmissionPrompt(null);
+    setUserAnswers(completedAnswers);
+    saveAttemptToHistory(attempt);
+    setQuizStatus('finished');
+    setIsWarningVisible(false);
+  }, [buildUserAnswers, questions.length, saveAttemptToHistory, studentName]);
 
   useEffect(() => {
     if (quizStatus !== 'active' || timeRemaining > 0) {
@@ -280,32 +300,65 @@ const App: React.FC = () => {
       return;
     }
 
-    const answeredCount = userAnswers.length;
+    finalizeQuiz();
+  }, [quizStatus, timeRemaining, questions, finalizeQuiz]);
 
-    if (answeredCount >= questions.length) {
-      finalizeQuiz(userAnswers);
+  const handleSelectAnswer = (answerKey: AnswerKey) => {
+    setSelectedAnswers(prev => {
+      if (prev.length === 0) {
+        return prev;
+      }
+
+      const updated = [...prev];
+      updated[currentQuestionIndex] = answerKey;
+      return updated;
+    });
+  };
+
+  const handleNextQuestion = () => {
+    setCurrentQuestionIndex(prev => Math.min(prev + 1, questions.length - 1));
+  };
+
+  const handlePreviousQuestion = () => {
+    setCurrentQuestionIndex(prev => Math.max(prev - 1, 0));
+  };
+
+  const handleJumpToQuestion = (index: number) => {
+    setCurrentQuestionIndex(index);
+  };
+
+  const handleSubmitQuiz = () => {
+    if (questions.length === 0) {
       return;
     }
 
-    const remainingAnswers = questions.slice(answeredCount).map((question, index) =>
-      createUserAnswerRecord(question, answeredCount + index + 1, 'unanswered')
-    );
+    const unansweredIndices = selectedAnswers.reduce<number[]>((accumulator, answer, index) => {
+      if (!answer) {
+        accumulator.push(index);
+      }
+      return accumulator;
+    }, []);
 
-    finalizeQuiz([...userAnswers, ...remainingAnswers]);
-  }, [quizStatus, timeRemaining, questions, userAnswers, finalizeQuiz, createUserAnswerRecord]);
-
-  const handleAnswerSubmit = (answerKey: AnswerKey) => {
-    const currentQuestion = questions[currentQuestionIndex];
-    const answerData = createUserAnswerRecord(currentQuestion, currentQuestionIndex + 1, answerKey);
-
-    const updatedAnswers = [...userAnswers, answerData];
-    setUserAnswers(updatedAnswers);
-
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    } else {
-      finalizeQuiz(updatedAnswers);
+    if (unansweredIndices.length > 0) {
+      setSubmissionPrompt({
+        firstUnansweredIndex: unansweredIndices[0],
+        unansweredCount: unansweredIndices.length
+      });
+      return;
     }
+
+    finalizeQuiz();
+  };
+
+  const handleConfirmSubmit = () => {
+    finalizeQuiz();
+  };
+
+  const handleReturnToUnanswered = () => {
+    if (submissionPrompt?.firstUnansweredIndex != null) {
+      setCurrentQuestionIndex(submissionPrompt.firstUnansweredIndex);
+    }
+    setSubmissionPrompt(null);
   };
 
   const handleNameSubmit = (event: React.FormEvent<HTMLFormElement>) => {
@@ -353,6 +406,19 @@ const App: React.FC = () => {
 
   const score = userAnswers.filter(a => a.isCorrect).length;
 
+  const questionStatuses = useMemo(() => {
+    if (questions.length === 0) {
+      return [] as ('answered' | 'unanswered')[];
+    }
+
+    return questions.map((_, index) => (selectedAnswers[index] ? 'answered' : 'unanswered'));
+  }, [questions, selectedAnswers]);
+
+  const unansweredCount = useMemo(
+    () => questionStatuses.filter(status => status === 'unanswered').length,
+    [questionStatuses]
+  );
+
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4">
       <button
@@ -367,7 +433,16 @@ const App: React.FC = () => {
             question={questions[currentQuestionIndex]}
             questionNumber={currentQuestionIndex + 1}
             totalQuestions={questions.length}
-            onSubmit={handleAnswerSubmit}
+            selectedAnswer={selectedAnswers[currentQuestionIndex] ?? null}
+            onSelectAnswer={handleSelectAnswer}
+            onNext={handleNextQuestion}
+            onPrevious={handlePreviousQuestion}
+            canGoPrevious={currentQuestionIndex > 0}
+            canGoNext={currentQuestionIndex < questions.length - 1}
+            onSubmitQuiz={handleSubmitQuiz}
+            questionStatuses={questionStatuses}
+            onJumpToQuestion={handleJumpToQuestion}
+            activeQuestionIndex={currentQuestionIndex}
             timeRemaining={timeRemaining}
             totalDurationSeconds={QUIZ_DURATION_SECONDS}
           />
@@ -381,6 +456,7 @@ const App: React.FC = () => {
             onAskAI={handleAskAI}
             onShowHistory={() => setIsHistoryOpen(true)}
             studentName={studentName}
+            unansweredCount={unansweredCount}
           />
         )}
       </main>
@@ -444,6 +520,32 @@ const App: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {submissionPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Còn câu hỏi chưa trả lời</h2>
+            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+              Bạn vẫn còn {submissionPrompt.unansweredCount} câu hỏi chưa trả lời. Bạn muốn nộp bài ngay bây giờ hay quay lại hoàn thành các câu hỏi này?
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleReturnToUnanswered}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Quay lại câu chưa làm
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-300 dark:focus:ring-red-800"
+              >
+                Nộp bài ngay
+              </button>
+            </div>
           </div>
         </div>
       )}

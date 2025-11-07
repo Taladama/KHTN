@@ -10,9 +10,10 @@ interface ResultsViewProps {
   onRetry: () => void;
   onAskAI: (data: UserAnswer) => void;
   onShowHistory: () => void;
+  studentName: string;
 }
 
-const ResultsView: React.FC<ResultsViewProps> = ({ score, totalQuestions, userAnswers, onRetry, onAskAI, onShowHistory }) => {
+const ResultsView: React.FC<ResultsViewProps> = ({ score, totalQuestions, userAnswers, onRetry, onAskAI, onShowHistory, studentName }) => {
   const [showExplanations, setShowExplanations] = useState(false);
 
   const { title, titleColor } = useMemo(() => {
@@ -29,6 +30,9 @@ const ResultsView: React.FC<ResultsViewProps> = ({ score, totalQuestions, userAn
   return (
     <div className="text-center w-full">
       <h2 className={`text-3xl font-bold mb-4 ${titleColor}`}>{title}</h2>
+      <p className="text-base text-slate-600 dark:text-slate-300 mb-2">
+        Kết quả của học sinh: <span className="font-semibold text-slate-800 dark:text-slate-100">{studentName}</span>
+      </p>
       <p className="text-xl text-slate-700 dark:text-slate-300 mb-6">
         Bạn đã trả lời đúng {score} trên tổng số {totalQuestions} câu hỏi.
       </p>

@@ -72,6 +72,10 @@ const isQuizAttemptRecord = (value: unknown): value is QuizAttempt => {
     return false;
   }
 
+  if (typeof candidate.studentName !== 'string' || candidate.studentName.trim().length === 0) {
+    return false;
+  }
+
   const { answers } = candidate;
   if (!Array.isArray(answers)) {
     return false;
@@ -81,18 +85,24 @@ const isQuizAttemptRecord = (value: unknown): value is QuizAttempt => {
 };
 
 const App: React.FC = () => {
-  const [quizStatus, setQuizStatus] = useState<QuizStatus>('loading');
+  const [quizStatus, setQuizStatus] = useState<QuizStatus>('idle');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<UserAnswer[]>([]);
   const [quizHistory, setQuizHistory] = useState<QuizAttempt[]>([]);
+  const [studentName, setStudentName] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [isNamePromptVisible, setIsNamePromptVisible] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState('');
   const [isModalLoading, setIsModalLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  const startQuiz = useCallback(() => {
+  const startQuiz = useCallback((name: string) => {
+    const trimmedName = name.trim();
+    setStudentName(trimmedName);
     setQuizStatus('loading');
     const shuffled = shuffleArray(allQuestions);
     setQuestions(shuffled.slice(0, NUM_QUESTIONS_PER_QUIZ));
@@ -100,10 +110,6 @@ const App: React.FC = () => {
     setUserAnswers([]);
     setQuizStatus('active');
   }, []);
-
-  useEffect(() => {
-    startQuiz();
-  }, [startQuiz]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -177,12 +183,44 @@ const App: React.FC = () => {
         timestamp: new Date().toISOString(),
         score: updatedAnswers.filter(answer => answer.isCorrect).length,
         totalQuestions: questions.length,
-        answers: updatedAnswers
+        answers: updatedAnswers,
+        studentName
       };
 
       saveAttemptToHistory(attempt);
       setQuizStatus('finished');
     }
+  };
+
+  const handleNameSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmed = nameInput.trim();
+
+    if (!trimmed) {
+      setNameError('Vui lòng nhập tên học sinh trước khi bắt đầu làm bài.');
+      return;
+    }
+
+    setNameError('');
+    setIsNamePromptVisible(false);
+    setNameInput(trimmed);
+    startQuiz(trimmed);
+  };
+
+  const handleOpenNamePrompt = () => {
+    setNameInput(studentName);
+    setNameError('');
+    setIsNamePromptVisible(true);
+  };
+
+  const handleCloseNamePrompt = () => {
+    if (!studentName) {
+      return;
+    }
+
+    setIsNamePromptVisible(false);
+    setNameError('');
+    setNameInput(studentName);
   };
 
   const handleAskAI = async (data: UserAnswer) => {
@@ -221,9 +259,10 @@ const App: React.FC = () => {
             score={score}
             totalQuestions={questions.length}
             userAnswers={userAnswers}
-            onRetry={startQuiz}
+            onRetry={handleOpenNamePrompt}
             onAskAI={handleAskAI}
             onShowHistory={() => setIsHistoryOpen(true)}
+            studentName={studentName}
           />
         )}
       </main>
@@ -237,7 +276,54 @@ const App: React.FC = () => {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         history={quizHistory}
+        activeStudentName={studentName}
       />
+      {isNamePromptVisible && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Nhập tên học sinh</h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+              Mỗi bài làm sẽ được lưu kèm tên học sinh để tiện tra cứu lịch sử sau này.
+            </p>
+            <form onSubmit={handleNameSubmit} className="mt-4 space-y-4">
+              <div>
+                <label htmlFor="student-name" className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                  Tên học sinh
+                </label>
+                <input
+                  id="student-name"
+                  name="student-name"
+                  type="text"
+                  value={nameInput}
+                  onChange={event => setNameInput(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-sky-400 dark:focus:ring-sky-700"
+                  placeholder="Ví dụ: Nguyễn Văn A"
+                  autoComplete="off"
+                  autoFocus
+                />
+                {nameError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{nameError}</p>}
+              </div>
+              <div className="flex justify-end space-x-3">
+                {studentName && (
+                  <button
+                    type="button"
+                    onClick={handleCloseNamePrompt}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Hủy
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-300 dark:focus:ring-sky-700"
+                >
+                  Bắt đầu làm bài
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

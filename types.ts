@@ -8,7 +8,7 @@ export interface Question {
   explanation: string;
 }
 
-export type QuizStatus = 'loading' | 'active' | 'finished';
+export type QuizStatus = 'idle' | 'loading' | 'active' | 'finished';
 
 export interface UserAnswer {
   question: string;
@@ -26,4 +26,5 @@ export interface QuizAttempt {
   score: number;
   totalQuestions: number;
   answers: UserAnswer[];
+  studentName: string;
 }

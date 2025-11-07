@@ -9,9 +9,21 @@ interface ResultsViewProps {
   userAnswers: UserAnswer[];
   onRetry: () => void;
   onAskAI: (data: UserAnswer) => void;
+  onShowHistory: () => void;
+  studentName: string;
+  unansweredCount: number;
 }
 
-const ResultsView: React.FC<ResultsViewProps> = ({ score, totalQuestions, userAnswers, onRetry, onAskAI }) => {
+const ResultsView: React.FC<ResultsViewProps> = ({
+  score,
+  totalQuestions,
+  userAnswers,
+  onRetry,
+  onAskAI,
+  onShowHistory,
+  studentName,
+  unansweredCount
+}) => {
   const [showExplanations, setShowExplanations] = useState(false);
 
   const { title, titleColor } = useMemo(() => {
@@ -28,23 +40,41 @@ const ResultsView: React.FC<ResultsViewProps> = ({ score, totalQuestions, userAn
   return (
     <div className="text-center w-full">
       <h2 className={`text-3xl font-bold mb-4 ${titleColor}`}>{title}</h2>
+      <p className="text-base text-slate-600 dark:text-slate-300 mb-2">
+        Kết quả của học sinh: <span className="font-semibold text-slate-800 dark:text-slate-100">{studentName}</span>
+      </p>
       <p className="text-xl text-slate-700 dark:text-slate-300 mb-6">
         Bạn đã trả lời đúng {score} trên tổng số {totalQuestions} câu hỏi.
       </p>
+      {unansweredCount > 0 && (
+        <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+          Có {unansweredCount} câu hỏi chưa được trả lời và được tính là sai khi chấm điểm.
+        </p>
+      )}
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+        Kết quả đã được lưu vào lịch sử. Bạn có thể xem lại bất cứ lúc nào.
+      </p>
 
       <div className="flex flex-col space-y-4">
-        <button 
+        <button
           onClick={onRetry}
           className="w-full bg-slate-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-slate-800 transition duration-300 text-lg focus:outline-none focus:ring-4 focus:ring-slate-300 dark:focus:ring-slate-800"
         >
           Làm lại
         </button>
 
-        <button 
+        <button
           onClick={() => setShowExplanations(!showExplanations)}
           className="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-green-700 transition duration-300 text-lg focus:outline-none focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800"
         >
           {showExplanations ? 'Ẩn giải thích' : 'Xem giải thích đáp án'}
+        </button>
+
+        <button
+          onClick={onShowHistory}
+          className="w-full bg-slate-100 text-slate-700 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-slate-200 transition duration-300 text-lg focus:outline-none focus:ring-4 focus:ring-slate-200 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600 dark:focus:ring-slate-600"
+        >
+          Xem lịch sử bài làm
         </button>
       </div>
 

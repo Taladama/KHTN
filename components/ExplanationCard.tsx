@@ -9,6 +9,7 @@ interface ExplanationCardProps {
 const ExplanationCard: React.FC<ExplanationCardProps> = ({ userAnswerData, onAskAI }) => {
     const { question, answerText, correctAnswerText, isCorrect, explanation, questionData, answerKey } = userAnswerData;
     const correctAnswerKey = questionData.correct;
+    const isUnanswered = answerKey === 'unanswered';
 
     const cardBg = isCorrect 
         ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-500/30' 
@@ -20,7 +21,7 @@ const ExplanationCard: React.FC<ExplanationCardProps> = ({ userAnswerData, onAsk
             
             {!isCorrect && (
                  <p className="text-red-700 dark:text-red-400 font-medium mt-2">
-                    Bạn đã chọn: {answerKey.toUpperCase()}. {answerText}
+                    {isUnanswered ? 'Bạn chưa trả lời câu hỏi này.' : `Bạn đã chọn: ${answerKey.toUpperCase()}. ${answerText}`}
                  </p>
             )}
             <p className="text-green-700 dark:text-green-400 font-medium mt-1">

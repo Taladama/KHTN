@@ -19,3 +19,11 @@ export interface UserAnswer {
   explanation: string;
   questionData: Question;
 }
+
+export interface QuizAttempt {
+  id: string;
+  timestamp: string;
+  score: number;
+  totalQuestions: number;
+  answers: UserAnswer[];
+}

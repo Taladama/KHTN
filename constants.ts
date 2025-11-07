@@ -1,6 +1,9 @@
 
 import { Question } from './types';
 
+export const QUIZ_HISTORY_STORAGE_KEY = 'quizHistory';
+export const MAX_HISTORY_ATTEMPTS = 50;
+
 export const NUM_QUESTIONS_PER_QUIZ = 15;
 
 export const allQuestions: Question[] = [

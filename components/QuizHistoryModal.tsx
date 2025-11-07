@@ -26,7 +26,7 @@ const QuizHistoryModal: React.FC<QuizHistoryModalProps> = ({ isOpen, onClose, hi
   }, [isOpen, activeStudentName, history]);
 
   const uniqueNames = useMemo(() => {
-    const names = Array.from(new Set(history.map(attempt => attempt.studentName.trim())));
+    const names = Array.from<string>(new Set(history.map(attempt => attempt.studentName.trim())));
     return names.sort((a, b) => a.localeCompare(b, 'vi', { sensitivity: 'base' }));
   }, [history]);
 

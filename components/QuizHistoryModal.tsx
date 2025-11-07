@@ -134,7 +134,7 @@ const QuizHistoryModal: React.FC<QuizHistoryModalProps> = ({ isOpen, onClose, hi
                           <p
                             className={`mt-2 text-sm font-medium ${answer.isCorrect ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
                           >
-                            Câu trả lời của bạn: {answer.answerText}
+                            Câu trả lời của bạn: {answer.answerKey === 'unanswered' ? 'Chưa trả lời' : answer.answerText}
                           </p>
                           {!answer.isCorrect && (
                             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">

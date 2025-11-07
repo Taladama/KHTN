@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Question, QuizStatus, UserAnswer, QuizAttempt } from './types';
-import { allQuestions, NUM_QUESTIONS_PER_QUIZ, QUIZ_HISTORY_STORAGE_KEY, MAX_HISTORY_ATTEMPTS } from './constants';
+import { AnswerKey, Question, QuizStatus, UserAnswer, QuizAttempt, RecordedAnswerKey } from './types';
+import {
+  allQuestions,
+  NUM_QUESTIONS_PER_QUIZ,
+  QUIZ_HISTORY_STORAGE_KEY,
+  MAX_HISTORY_ATTEMPTS,
+  QUIZ_DURATION_SECONDS,
+  QUIZ_WARNING_THRESHOLD_SECONDS,
+  QUIZ_WARNING_DISPLAY_DURATION_MS
+} from './constants';
 import { fetchExplanation, generatePrompt } from './services/geminiService';
 import QuizView from './components/QuizView';
 import ResultsView from './components/ResultsView';
@@ -17,8 +25,11 @@ const shuffleArray = <T,>(array: T[]): T[] => {
   return newArray;
 };
 
-const isAnswerKey = (value: unknown): value is UserAnswer['answerKey'] =>
+const isAnswerKey = (value: unknown): value is AnswerKey =>
   value === 'a' || value === 'b' || value === 'c' || value === 'd';
+
+const isRecordedAnswerKey = (value: unknown): value is UserAnswer['answerKey'] =>
+  value === 'unanswered' || isAnswerKey(value);
 
 const isQuestionRecord = (value: unknown): value is Question => {
   if (!value || typeof value !== 'object') {
@@ -47,7 +58,7 @@ const isUserAnswerRecord = (value: unknown): value is UserAnswer => {
 
   return (
     typeof candidate.question === 'string' &&
-    isAnswerKey(candidate.answerKey) &&
+    isRecordedAnswerKey(candidate.answerKey) &&
     typeof candidate.answerText === 'string' &&
     typeof candidate.correctAnswerText === 'string' &&
     typeof candidate.isCorrect === 'boolean' &&
@@ -94,6 +105,9 @@ const App: React.FC = () => {
   const [nameInput, setNameInput] = useState('');
   const [nameError, setNameError] = useState('');
   const [isNamePromptVisible, setIsNamePromptVisible] = useState(true);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [hasShownWarning, setHasShownWarning] = useState(false);
+  const [isWarningVisible, setIsWarningVisible] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalContent, setModalContent] = useState('');
@@ -104,6 +118,9 @@ const App: React.FC = () => {
     const trimmedName = name.trim();
     setStudentName(trimmedName);
     setQuizStatus('loading');
+    setTimeRemaining(QUIZ_DURATION_SECONDS);
+    setHasShownWarning(false);
+    setIsWarningVisible(false);
     const shuffled = shuffleArray(allQuestions);
     setQuestions(shuffled.slice(0, NUM_QUESTIONS_PER_QUIZ));
     setCurrentQuestionIndex(0);
@@ -159,18 +176,127 @@ const App: React.FC = () => {
     });
   }, []);
 
-  const handleAnswerSubmit = (answerKey: 'a' | 'b' | 'c' | 'd') => {
-    const currentQuestion = questions[currentQuestionIndex];
-    const isCorrect = answerKey === currentQuestion.correct;
-    const answerData: UserAnswer = {
-      question: `Câu ${currentQuestionIndex + 1}: ${currentQuestion.question}`,
-      answerKey,
-      answerText: currentQuestion[answerKey],
-      correctAnswerText: currentQuestion[currentQuestion.correct],
-      isCorrect,
-      explanation: currentQuestion.explanation,
-      questionData: currentQuestion
+  useEffect(() => {
+    if (quizStatus !== 'active' || typeof window === 'undefined') {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setTimeRemaining(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
     };
+  }, [quizStatus]);
+
+  useEffect(() => {
+    if (quizStatus !== 'active') {
+      return;
+    }
+
+    if (timeRemaining === QUIZ_WARNING_THRESHOLD_SECONDS && !hasShownWarning) {
+      setHasShownWarning(true);
+      setIsWarningVisible(true);
+    }
+  }, [quizStatus, timeRemaining, hasShownWarning]);
+
+  useEffect(() => {
+    if (!isWarningVisible || typeof window === 'undefined') {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsWarningVisible(false);
+    }, QUIZ_WARNING_DISPLAY_DURATION_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isWarningVisible]);
+
+  const createUserAnswerRecord = useCallback(
+    (question: Question, questionNumber: number, selectedKey: RecordedAnswerKey): UserAnswer => {
+      const correctAnswerKey = question.correct;
+      const correctAnswerText = question[correctAnswerKey];
+
+      if (selectedKey === 'unanswered') {
+        return {
+          question: `Câu ${questionNumber}: ${question.question}`,
+          answerKey: 'unanswered',
+          answerText: 'Chưa trả lời',
+          correctAnswerText,
+          isCorrect: false,
+          explanation: question.explanation,
+          questionData: question
+        };
+      }
+
+      const answerText = question[selectedKey];
+      const isCorrect = selectedKey === correctAnswerKey;
+
+      return {
+        question: `Câu ${questionNumber}: ${question.question}`,
+        answerKey: selectedKey,
+        answerText,
+        correctAnswerText,
+        isCorrect,
+        explanation: question.explanation,
+        questionData: question
+      };
+    },
+    []
+  );
+
+  const finalizeQuiz = useCallback(
+    (completedAnswers: UserAnswer[]) => {
+      if (questions.length === 0) {
+        return;
+      }
+
+      const attempt: QuizAttempt = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: new Date().toISOString(),
+        score: completedAnswers.filter(answer => answer.isCorrect).length,
+        totalQuestions: questions.length,
+        answers: completedAnswers,
+        studentName
+      };
+
+      setUserAnswers(completedAnswers);
+      saveAttemptToHistory(attempt);
+      setQuizStatus('finished');
+      setIsWarningVisible(false);
+    },
+    [questions, saveAttemptToHistory, studentName]
+  );
+
+  useEffect(() => {
+    if (quizStatus !== 'active' || timeRemaining > 0) {
+      return;
+    }
+
+    if (questions.length === 0) {
+      return;
+    }
+
+    const answeredCount = userAnswers.length;
+
+    if (answeredCount >= questions.length) {
+      finalizeQuiz(userAnswers);
+      return;
+    }
+
+    const remainingAnswers = questions.slice(answeredCount).map((question, index) =>
+      createUserAnswerRecord(question, answeredCount + index + 1, 'unanswered')
+    );
+
+    finalizeQuiz([...userAnswers, ...remainingAnswers]);
+  }, [quizStatus, timeRemaining, questions, userAnswers, finalizeQuiz, createUserAnswerRecord]);
+
+  const handleAnswerSubmit = (answerKey: AnswerKey) => {
+    const currentQuestion = questions[currentQuestionIndex];
+    const answerData = createUserAnswerRecord(currentQuestion, currentQuestionIndex + 1, answerKey);
 
     const updatedAnswers = [...userAnswers, answerData];
     setUserAnswers(updatedAnswers);
@@ -178,17 +304,7 @@ const App: React.FC = () => {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
-      const attempt: QuizAttempt = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: new Date().toISOString(),
-        score: updatedAnswers.filter(answer => answer.isCorrect).length,
-        totalQuestions: questions.length,
-        answers: updatedAnswers,
-        studentName
-      };
-
-      saveAttemptToHistory(attempt);
-      setQuizStatus('finished');
+      finalizeQuiz(updatedAnswers);
     }
   };
 
@@ -252,6 +368,8 @@ const App: React.FC = () => {
             questionNumber={currentQuestionIndex + 1}
             totalQuestions={questions.length}
             onSubmit={handleAnswerSubmit}
+            timeRemaining={timeRemaining}
+            totalDurationSeconds={QUIZ_DURATION_SECONDS}
           />
         )}
         {quizStatus === 'finished' && (
@@ -278,6 +396,11 @@ const App: React.FC = () => {
         history={quizHistory}
         activeStudentName={studentName}
       />
+      {isWarningVisible && (
+        <div className="pointer-events-none fixed top-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-lg">
+          Chỉ còn 2 phút 30 giây! Hãy nhanh chóng hoàn thành bài làm.
+        </div>
+      )}
       {isNamePromptVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">

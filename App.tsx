@@ -146,14 +146,20 @@ const App: React.FC = () => {
       try {
         const parsedHistory: unknown = JSON.parse(storedHistory);
         if (Array.isArray(parsedHistory)) {
-          const sanitizedHistory = parsedHistory.filter(isQuizAttemptRecord);
+          const sanitizedHistory = parsedHistory
+            .filter(isQuizAttemptRecord)
+            .map(attempt => ({
+              ...attempt,
+              studentName: attempt.studentName.trim()
+            }));
           if (sanitizedHistory.length > 0) {
             const cappedHistory = sanitizedHistory.slice(0, MAX_HISTORY_ATTEMPTS);
             setQuizHistory(cappedHistory);
 
-            if (cappedHistory.length !== sanitizedHistory.length || cappedHistory.length !== parsedHistory.length) {
+            const normalizedHistoryString = JSON.stringify(cappedHistory);
+            if (storedHistory !== normalizedHistoryString) {
               try {
-                window.localStorage.setItem(QUIZ_HISTORY_STORAGE_KEY, JSON.stringify(cappedHistory));
+                window.localStorage.setItem(QUIZ_HISTORY_STORAGE_KEY, normalizedHistoryString);
               } catch (error) {
                 console.error('Không thể chuẩn hóa dữ liệu lịch sử trong bộ nhớ:', error);
               }
@@ -170,7 +176,15 @@ const App: React.FC = () => {
 
   const saveAttemptToHistory = useCallback((attempt: QuizAttempt) => {
     setQuizHistory(prevHistory => {
-      const updatedHistory = [attempt, ...prevHistory].slice(0, MAX_HISTORY_ATTEMPTS);
+      const normalizedAttempt: QuizAttempt = {
+        ...attempt,
+        studentName: attempt.studentName.trim()
+      };
+      const normalizedHistory = prevHistory.map(historyAttempt => ({
+        ...historyAttempt,
+        studentName: historyAttempt.studentName.trim()
+      }));
+      const updatedHistory = [normalizedAttempt, ...normalizedHistory].slice(0, MAX_HISTORY_ATTEMPTS);
 
       if (typeof window !== 'undefined') {
         try {
@@ -396,12 +410,17 @@ const App: React.FC = () => {
     setIsModalOpen(true);
     setIsModalLoading(true);
     setModalContent('');
-    
-    const prompt = generatePrompt(data);
-    const response = await fetchExplanation(prompt);
-    
-    setModalContent(response);
-    setIsModalLoading(false);
+
+    try {
+      const prompt = generatePrompt(data);
+      const response = await fetchExplanation(prompt);
+      setModalContent(response);
+    } catch (error) {
+      console.error('Không thể tải giải thích từ AI:', error);
+      setModalContent('Xin lỗi, hiện không thể tải giải thích. Vui lòng thử lại sau.');
+    } finally {
+      setIsModalLoading(false);
+    }
   };
 
   const score = userAnswers.filter(a => a.isCorrect).length;

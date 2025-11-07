@@ -20,8 +20,11 @@ const QuizHistoryModal: React.FC<QuizHistoryModalProps> = ({ isOpen, onClose, hi
       return;
     }
 
-    if (activeStudentName && history.some(attempt => attempt.studentName === activeStudentName)) {
-      setSelectedName(activeStudentName);
+    if (
+      activeStudentName &&
+      history.some(attempt => attempt.studentName.trim().localeCompare(activeStudentName.trim(), 'vi', { sensitivity: 'base' }) === 0)
+    ) {
+      setSelectedName(activeStudentName.trim());
     }
   }, [isOpen, activeStudentName, history]);
 
@@ -30,9 +33,16 @@ const QuizHistoryModal: React.FC<QuizHistoryModalProps> = ({ isOpen, onClose, hi
     return names.sort((a, b) => a.localeCompare(b, 'vi', { sensitivity: 'base' }));
   }, [history]);
 
-  const filteredHistory = selectedName
-    ? history.filter(attempt => attempt.studentName === selectedName)
-    : history;
+  const filteredHistory = useMemo(() => {
+    if (!selectedName) {
+      return history;
+    }
+
+    const normalizedSelected = selectedName.trim().toLocaleLowerCase('vi');
+    return history.filter(
+      attempt => attempt.studentName.trim().toLocaleLowerCase('vi') === normalizedSelected
+    );
+  }, [history, selectedName]);
 
   if (!isOpen) {
     return null;

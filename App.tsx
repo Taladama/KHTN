@@ -105,7 +105,7 @@ const App: React.FC = () => {
   const [studentName, setStudentName] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [nameError, setNameError] = useState('');
-  const [isNamePromptVisible, setIsNamePromptVisible] = useState(true);
+  const [isNamePromptVisible, setIsNamePromptVisible] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [hasShownWarning, setHasShownWarning] = useState(false);
   const [isWarningVisible, setIsWarningVisible] = useState(false);
@@ -118,6 +118,12 @@ const App: React.FC = () => {
     firstUnansweredIndex: number | null;
     unansweredCount: number;
   } | null>(null);
+
+  const isAnyOverlayOpen =
+    isNamePromptVisible ||
+    isHistoryOpen ||
+    submissionPrompt !== null ||
+    isModalOpen;
 
   const startQuiz = useCallback((name: string) => {
     const trimmedName = name.trim();
@@ -152,9 +158,15 @@ const App: React.FC = () => {
               ...attempt,
               studentName: attempt.studentName.trim()
             }));
+
           if (sanitizedHistory.length > 0) {
             const cappedHistory = sanitizedHistory.slice(0, MAX_HISTORY_ATTEMPTS);
             setQuizHistory(cappedHistory);
+
+            if (!studentName && cappedHistory[0]) {
+              setStudentName(cappedHistory[0].studentName);
+              setNameInput(cappedHistory[0].studentName);
+            }
 
             const normalizedHistoryString = JSON.stringify(cappedHistory);
             if (storedHistory !== normalizedHistoryString) {
@@ -173,6 +185,64 @@ const App: React.FC = () => {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    if (isAnyOverlayOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isAnyOverlayOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (!isAnyOverlayOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (isModalOpen) {
+        setIsModalOpen(false);
+        return;
+      }
+
+      if (submissionPrompt) {
+        setSubmissionPrompt(null);
+        return;
+      }
+
+      if (isHistoryOpen) {
+        setIsHistoryOpen(false);
+        return;
+      }
+
+      if (isNamePromptVisible && studentName) {
+        setIsNamePromptVisible(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAnyOverlayOpen, isHistoryOpen, isModalOpen, isNamePromptVisible, submissionPrompt, studentName]);
 
   const saveAttemptToHistory = useCallback((attempt: QuizAttempt) => {
     setQuizHistory(prevHistory => {
@@ -438,18 +508,71 @@ const App: React.FC = () => {
     [questionStatuses]
   );
 
+  const activeQuestion =
+    quizStatus === 'active' && questions.length > 0
+      ? questions[Math.min(currentQuestionIndex, questions.length - 1)]
+      : null;
+
+  const isLoading = quizStatus === 'loading';
+  const startButtonLabel = studentName ? `Tiếp tục với ${studentName}` : 'Bắt đầu làm bài';
+
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-gradient-to-b from-sky-50 via-white to-slate-50 px-4 py-10 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
       <button
         onClick={() => setIsHistoryOpen(true)}
-        className="fixed top-4 right-4 rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 shadow-lg backdrop-blur hover:bg-white dark:bg-slate-800/80 dark:text-slate-100"
+        className="fixed top-6 right-6 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-600 shadow-lg backdrop-blur transition hover:border-sky-200 hover:text-sky-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:hover:border-slate-600"
       >
         Lịch sử bài làm
       </button>
-      <main className="bg-white dark:bg-slate-800 w-full max-w-2xl rounded-2xl shadow-xl p-6 md:p-10">
-        {quizStatus === 'active' && questions.length > 0 && (
+      <main className="mx-auto w-full max-w-5xl rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-2xl backdrop-blur md:p-10 dark:border-slate-700/60 dark:bg-slate-900/70">
+        {quizStatus === 'idle' && (
+          <section className="space-y-6 text-left">
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Bắt đầu ôn luyện</p>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-50">Kiểm tra Khoa học Tự nhiên 8 nâng cao</h1>
+            <p className="text-base text-slate-600 dark:text-slate-300">
+              Hoàn thành {NUM_QUESTIONS_PER_QUIZ} câu hỏi trong 20 phút. Bạn có thể bỏ qua câu hỏi khó và quay lại sau, hệ thống sẽ nhắc nếu còn câu chưa trả lời khi nộp bài.
+            </p>
+            <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+              <li className="flex items-start gap-2">
+                <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-emerald-500" />
+                <span>Lưu lại mỗi lần làm bài cùng tên học sinh để tiện tra cứu lịch sử.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-sky-500" />
+                <span>Tự động nộp bài khi hết giờ, các câu bỏ trống được tính sai.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-1 inline-flex h-2 w-2 flex-none rounded-full bg-amber-500" />
+                <span>Nhấn “Lịch sử bài làm” để xem lại các lượt trước hoặc lọc theo tên.</span>
+              </li>
+            </ul>
+            <div className="pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setNameInput(studentName);
+                  setNameError('');
+                  setIsNamePromptVisible(true);
+                }}
+                className="inline-flex items-center gap-2 rounded-2xl bg-sky-500 px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-sky-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300 dark:focus-visible:outline-sky-600"
+              >
+                {startButtonLabel}
+              </button>
+            </div>
+          </section>
+        )}
+        {isLoading && (
+          <section className="flex flex-col items-center gap-4 py-16 text-center text-slate-600 dark:text-slate-300">
+            <span className="h-12 w-12 animate-spin rounded-full border-4 border-sky-200 border-t-sky-500" aria-hidden />
+            <div>
+              <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">Đang chuẩn bị câu hỏi…</p>
+              <p className="mt-1 text-sm">Vui lòng chờ trong giây lát.</p>
+            </div>
+          </section>
+        )}
+        {quizStatus === 'active' && activeQuestion && (
           <QuizView
-            question={questions[currentQuestionIndex]}
+            question={activeQuestion}
             questionNumber={currentQuestionIndex + 1}
             totalQuestions={questions.length}
             selectedAnswer={selectedAnswers[currentQuestionIndex] ?? null}
@@ -464,6 +587,7 @@ const App: React.FC = () => {
             activeQuestionIndex={currentQuestionIndex}
             timeRemaining={timeRemaining}
             totalDurationSeconds={QUIZ_DURATION_SECONDS}
+            studentName={studentName}
           />
         )}
         {quizStatus === 'finished' && (
@@ -498,9 +622,17 @@ const App: React.FC = () => {
       )}
       {isNamePromptVisible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Nhập tên học sinh</h2>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="student-name-title"
+            aria-describedby="student-name-description"
+          >
+            <h2 id="student-name-title" className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+              Nhập tên học sinh
+            </h2>
+            <p id="student-name-description" className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Mỗi bài làm sẽ được lưu kèm tên học sinh để tiện tra cứu lịch sử sau này.
             </p>
             <form onSubmit={handleNameSubmit} className="mt-4 space-y-4">
@@ -544,9 +676,17 @@ const App: React.FC = () => {
       )}
       {submissionPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Còn câu hỏi chưa trả lời</h2>
-            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="submission-warning-title"
+            aria-describedby="submission-warning-description"
+          >
+            <h2 id="submission-warning-title" className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+              Còn câu hỏi chưa trả lời
+            </h2>
+            <p id="submission-warning-description" className="mt-3 text-sm text-slate-600 dark:text-slate-300">
               Bạn vẫn còn {submissionPrompt.unansweredCount} câu hỏi chưa trả lời. Bạn muốn nộp bài ngay bây giờ hay quay lại hoàn thành các câu hỏi này?
             </p>
             <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

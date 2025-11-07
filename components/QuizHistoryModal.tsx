@@ -55,9 +55,17 @@ const QuizHistoryModal: React.FC<QuizHistoryModalProps> = ({ isOpen, onClose, hi
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-slate-900/60" onClick={onClose} />
-      <div className="relative max-h-[80vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800">
+      <div
+        className="relative max-h-[80vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quiz-history-title"
+        aria-describedby="quiz-history-description"
+      >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Lịch sử bài làm</h2>
+          <h2 id="quiz-history-title" className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+            Lịch sử bài làm
+          </h2>
           <button
             onClick={onClose}
             className="rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-600 shadow hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600 dark:focus:ring-slate-500"
@@ -66,7 +74,7 @@ const QuizHistoryModal: React.FC<QuizHistoryModalProps> = ({ isOpen, onClose, hi
           </button>
         </div>
 
-        <p className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+        <p id="quiz-history-description" className="mb-4 text-xs text-slate-500 dark:text-slate-400">
           Lưu tối đa {MAX_HISTORY_ATTEMPTS} bài làm gần nhất.
         </p>
 
